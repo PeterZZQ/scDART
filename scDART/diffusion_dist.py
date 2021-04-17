@@ -99,7 +99,6 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True, n_pca = 100
     from scipy.spatial.distance import pdist, squareform
     from sklearn.neighbors import NearestNeighbors
     if method == "exact":
-        start = time.time()
         G = gt.Graph(data, n_pca = n_pca, knn = n_neigh, **kwargs)
         T = G.diff_op
         if scipy.sparse.issparse(T):
@@ -112,10 +111,8 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True, n_pca = 100
             U_t = T_t
         # calculate pairwise feature vector distance
         dist = squareform(pdist(U_t))
-        end = time.time()
-    else:
-        start = time.time()
-        
+    
+    else:        
         anchor_idx = np.array([False] * data.shape[0])
         if num_anchor is not None:
             # randomly choose num_anchor of cells as the anchor cells for distance calculation
@@ -151,13 +148,12 @@ def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True, n_pca = 100
         U_t[~anchor_idx,:] = U_query_t
 
         dist = squareform(pdist(U_t))
-        end = time.time()
-    
-    print("running time(sec):", end-start)
+        
     return dist
 
 
 def diffu_distance(data, n_neigh = 5, ts = [30,40,50,60], use_potential = False, dr = "lsi", n_components = 100, method = "exact", n_anchor = None, **kwargs):
+    start = time.time()
     diffu = np.zeros((data.shape[0], data.shape[0]))
     if dr == "lsi":
         data = lsi_ATAC(data, k = n_components, use_first = False)
@@ -170,4 +166,6 @@ def diffu_distance(data, n_neigh = 5, ts = [30,40,50,60], use_potential = False,
         diffu += diffu_t
     # average
     diffu = diffu/len(ts)
+    end = time.time()
+    print("Diffusion distance calculated, time used (sec):", end-start)
     return diffu
