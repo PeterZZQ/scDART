@@ -2,12 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F 
 import numpy as np
-import script.loss as loss
+import src.loss as loss
 from torch.autograd import Variable
 from torch import autograd
-import script.diffusion_dist as diff
-import script.model as model
-import script.post_align as palign
+import src.diffusion_dist as diff
+import src.model as model
+import src.post_align as palign
 
 def scDART_train(EMBED_CONFIG, reg_mtx, train_rna_loader, train_atac_loader, test_rna_loader, test_atac_loader, \
     n_epochs = 1001, use_anchor = True, n_anchor = None, ts = None, reg_d = 1, reg_g = 1, reg_mmd = 1, \

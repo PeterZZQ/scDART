@@ -18,15 +18,15 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 from umap import UMAP
 
-import script.diffusion_dist as diff
-import script.dataset as dataset
-import script.model as model
-import script.loss as loss
-import script.train as train
-import script.utils as utils
-import script.post_align as palign
-import script.benchmark as bmk
-import script.TI as ti
+import src.diffusion_dist as diff
+import src.dataset as dataset
+import src.model as model
+import src.loss as loss
+import src.train as train
+import src.utils as utils
+import src.post_align as palign
+import src.benchmark as bmk
+import src.TI as ti
 import networkx as nx
 import seaborn as sns
 
