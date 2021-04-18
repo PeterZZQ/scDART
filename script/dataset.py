@@ -16,6 +16,43 @@ class AddGaussianNoise(object):
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
+#TODO: IMPORTANT! Check data preprocess
+class dataset(Dataset):
+    def __init__(self, counts_dir, anno_dir, anchor = None):
+        counts = pd.read_csv(counts_dir, index_col=0).values
+        if len(counts) == 0: 
+            print("Count file does not exist")
+            return
+
+        cell_labels = []
+        with open(anno_dir, "r") as fp:
+            for i in fp:
+                cell_labels.append(i.strip("\n"))
+        cell_labels = np.array(cell_labels)
+        if len(cell_labels) == 0:
+            print("Annotation file does not exist")
+            return
+
+        self.counts = torch.FloatTensor(counts)
+        self.cell_labels = cell_labels
+
+        if anchor is not None:
+            self.is_anchor = (self.cell_labels == anchor)
+        else:
+            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")    
+        
+        self.is_anchor = torch.tensor(self.is_anchor)
+                   
+    def __len__(self):
+        return self.counts.shape[0]
+    
+    def __getitem__(self, idx):
+        # data original data, index the index of cell, label, corresponding labels, batch, corresponding batch number
+        sample = {"count": self.counts[idx,:], "index": idx, "is_anchor": self.is_anchor[idx]}
+        return sample
+
+
+
 
 class symsim2_rna(Dataset):
     def __init__(self, counts_dir = "./data/symsim2/rand1/GxC.txt", anno_dir = "./data/symsim2/rand1/cell_label1.txt", anchor = None, libsize = None):

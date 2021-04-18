@@ -2,10 +2,80 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F 
 import numpy as np
-import loss
+import script.loss as loss
 from torch.autograd import Variable
 from torch import autograd
+import script.diffusion_dist as diff
+import script.model as model
+import script.post_align as palign
 
+def scDART_train(EMBED_CONFIG, reg_mtx, train_rna_loader, train_atac_loader, test_rna_loader, test_atac_loader, \
+    n_epochs = 1001, use_anchor = True, n_anchor = None, ts = None, reg_d = 1, reg_g = 1, reg_mmd = 1, \
+        l_dist_type = 'kl', k = 3, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+        
+        """\
+            Train scDART model
+        """
+
+        print("Device: " + device)
+
+        #TODO: check parameters, fixed or hyperparamters
+        # calculate the distance
+
+        # n_anchor here is the number of anchor nodes used for distance calculation, if n_anchor is none, then use exact way of calculating the distance
+        # if n_anchor is given, then use fast way
+        if n_anchor == None:
+            method = "exact"
+            print("Number of anchor cells not specified, using exact mode for distance calculation instead.")
+        else:
+            method = "fast"
+            print("Using fast mode for distance calculation. Number of anchor cells:.{:d}".format(n_anchor))
+        
+        for data in test_rna_loader:
+            dist_rna = diff.diffu_distance(data["count"].numpy(), ts = ts, 
+            use_potential = False, dr = "pca", method = method , n_anchor = n_anchor)
+
+        for data in test_atac_loader:
+            dist_atac = diff.diffu_distance(data["count"].numpy(), ts = ts, 
+            use_potential = False, dr = "lsi", method = "exact", n_anchor = n_anchor)
+
+        dist_rna = dist_rna/np.linalg.norm(dist_rna)
+        dist_atac = dist_atac/np.linalg.norm(dist_atac)
+        dist_rna = torch.FloatTensor(dist_rna).to(device)
+        dist_atac = torch.FloatTensor(dist_atac).to(device)
+
+        genact = model.gene_act(features = EMBED_CONFIG["gact_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(device)
+        encoder = model.Encoder(features = EMBED_CONFIG["proj_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(device)
+        decoder = model.Decoder(features = EMBED_CONFIG["proj_layers"][::-1], dropout_rate = 0.0, negative_slope = 0.2).to(device)
+        genact_t = model.gene_act_t(features = EMBED_CONFIG["gact_layers"][::-1], dropout_rate = 0.0, negative_slope = 0.2).to(device)
+        model_dict = {"gene_act": genact, "encoder": encoder, "decoder": decoder, "gene_act_t": genact_t}
+
+        learning_rate = EMBED_CONFIG['learning_rate']
+        opt_genact = torch.optim.Adam(genact.parameters(), lr = learning_rate)
+        opt_encoder = torch.optim.Adam(encoder.parameters(), lr = learning_rate)
+        opt_decoder = torch.optim.Adam(decoder.parameters(), lr = learning_rate)
+        opt_genact_t = torch.optim.Adam(genact_t.parameters(), lr = learning_rate)
+        opt_dict = {"gene_act": opt_genact, "encoder": opt_encoder, "decoder": opt_decoder, "gene_act_t": opt_genact_t}
+
+        print("Model:" + model_dict)
+
+        match_latent(model = model_dict, opts = opt_dict, dist_atac = dist_atac, dist_rna = dist_rna, 
+                            data_loader_rna = train_rna_loader, data_loader_atac = train_atac_loader, n_epochs = n_epochs, 
+                            reg_mtx = reg_mtx, reg_d = reg_d, reg_g = reg_g, reg_mmd = reg_mmd, use_anchor = use_anchor, norm = "l1", 
+                            mode = l_dist_type)
+
+        with torch.no_grad():
+            for data in test_rna_loader:
+                z_rna = model_dict["encoder"](data['count'].to(device)).cpu().detach()
+
+            for data in test_atac_loader:
+                z_atac = model_dict["encoder"](model_dict["gene_act"](data['count'].to(device))).cpu().detach()
+
+        # post-maching
+        z_rna, z_atac = palign.match_alignment(z_rna = z_rna, z_atac = z_atac, k = k)
+        z_atac, z_rna = palign.match_alignment(z_rna = z_atac, z_atac = z_rna, k = k)
+    
+        return model_dict, z_rna, z_atac
 
 
 def _train_mmd(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist_rna, 
