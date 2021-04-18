@@ -94,10 +94,12 @@ class scDART(object):
         """
 
         # TODO: check: fit function is very similar to fit_transform except it does not store z_rna and z_atac
-        # test this
+        # TODO: test this
+        # TODO: Fix data preprocessing in dataset.py
         rna_count, rna_anno, rna_anchor, atac_count, atac_anno, atac_anchor, reg = data 
         self.rna_dataset = dataset.dataset(rna_count, rna_anno, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anno, atac_anchor)
+        # TODO: Fix data preprocessing
         coarse_reg = torch.FloatTensor(pd.read_csv(reg, sep = "\t", index_col = 0, header = None).values).to(self.device)
 
         batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
@@ -138,6 +140,7 @@ class scDART(object):
             print("Model does not exist. Please train a model with fit function")
             return
 
+        # TODO: Fix data preprocessing
         rna_count, rna_anno, rna_anchor, atac_count, atac_anno, atac_anchor, reg = data 
         self.rna_dataset = dataset.dataset(rna_count, rna_anno, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anno, atac_anchor)
@@ -166,9 +169,11 @@ class scDART(object):
         """
 
         #TODO: test this
+        # TODO: Fix data preprocessing
         rna_count, rna_anno, rna_anchor, atac_count, atac_anno, atac_anchor, reg = data 
         self.rna_dataset = dataset.dataset(rna_count, rna_anno, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anno, atac_anchor)
+        # TODO: Fix data preprocessing
         coarse_reg = torch.FloatTensor(pd.read_csv(reg, sep = "\t", index_col = 0, header = None).values).to(self.device)
         
         batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
