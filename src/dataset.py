@@ -21,9 +21,7 @@ class dataset(Dataset):
         """
     def __init__(self, counts, anchor = None):
 
-        if len(counts) == 0: 
-            assert("Count is empty")
-
+        assert not len(counts) == 0, "Count is empty"
         self.counts = torch.FloatTensor(counts)
 
         self.is_anchor = np.zeros(self.counts.shape[0]).astype("bool")    

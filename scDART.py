@@ -210,8 +210,7 @@ class scDART(object):
                 atac latent space
         """
 
-        if self.model_dict is None:
-            assert("Model does not exist. Please train a model with fit function")
+        assert self.model_dict is not None, "Model does not exist. Please train a model with fit function"
 
         self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
@@ -268,10 +267,9 @@ class scDART(object):
                 atac latent space
         """
 
+        assert not len(reg) == 0, "Gene activation is empty"
         self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
-        if len(reg) == 0:
-            assert("Gene activation is empty")
         coarse_reg = torch.FloatTensor(reg).to(self.device)
         
         batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
@@ -357,10 +355,7 @@ class scDART(object):
             None
         """
 
-        if self.model_dict is None:
-            assert("No model to save.")
-        if save_path is None:
-            assert("Please provide a path")
+        assert self.model_dict is not None, "No model to save."
 
         torch.save(self.model_dict, save_path)
         print("Model saved")
@@ -408,8 +403,7 @@ class scDART(object):
         }
         _kwargs.update(kwargs)
 
-        if self.z_rna is None or self.z_atac is None:
-            assert("Latent space does not exist")
+        assert self.z_rna is not None and self.z_atac is not None, "Latent space does not exist"
 
         if mode == "embedding":
             pca_op = PCA(n_components = 2)
@@ -451,4 +445,4 @@ class scDART(object):
                     mode = "joint", save = save_path, figsize = _kwargs['fig_size'], axis_label = "PCA")
 
         else:
-            assert("Please use embedding, backbone, or pseudotime mode")
+            print("Please use embedding, backbone, or pseudotime mode")
