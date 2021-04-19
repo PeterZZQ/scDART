@@ -3,25 +3,6 @@ import numpy as np
 import torch.nn.functional as F
 
 
-# def pairwise_distance_old(x):
-#     """\
-#     Description:
-#     -----------
-#         Pytorch implementation of pairwise distance, similar to squareform(pdist(x))
-        
-#     Parameters:
-#     -----------
-#         x: sample by feature matrix
-#     Returns:
-#     -----------
-#         dist: sample by sample pairwise distance
-#     """
-#     x_norm = (x**2).sum(1).view(-1, 1)
-#     y_norm = x_norm.view(1, -1)
-#     dist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(x, 0, 1))
-#     dist = torch.sqrt(dist + 1e-2)
-#     return dist 
-
 def compute_pairwise_distances(x, y):
     x_norm = (x**2).sum(1).view(-1, 1)
     y_t = torch.transpose(y, 0, 1)
@@ -70,54 +51,6 @@ def pinfo_loss(model, mask, norm = "l2"):
     return loss
 
 
-# def dist_loss(z, diff_sim, dist_mode = "mse"):
-#     # cosine similarity loss
-#     latent_sim = pairwise_distance(z)
-
-#     if dist_mode == "inner_product":
-#         # normalize latent similarity matrix
-#         latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
-#         # unnecessary to normalize diff_sim, diff_sim fixed
-#         diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
-
-#         # inner product loss, maximize, so add negative before, in addition, make sure those two values are normalized, with norm 1
-#         loss_dist = - torch.sum(diff_sim * latent_sim) 
-
-#     elif dist_mode == "mse": 
-#         # MSE loss
-#         # normalize latent similarity matrix
-#         latent_sim = latent_sim / torch.norm(latent_sim, p='fro')
-#         diff_sim = diff_sim / torch.norm(diff_sim, p = 'fro')
-
-#         loss_dist = torch.norm(diff_sim - latent_sim, p = 'fro')
-    
-#     elif dist_mode == "similarity":
-#         diff_sim = diff_sim / torch.sum(diff_sim)
-        
-#         # using t-student instead of Gaussian to circumvent the crowding problem
-#         latent_t = 1 / (1 + latent_sim ** 2)
-#         # normalize for the same scale
-#         latent_t = latent_t / torch.sum(latent_t)
-#         # symmetric KL -> JS distance, use KL to ensure that close distance in high dimensional space is also close in low dimensional space, 
-#         # but large distance in high dimensional space is not necessarily large in low dimensional space, thus enforce local
-#         # we want constraint on global, thus JS
-#         M = 0.5 * (diff_sim + latent_t)
-#         loss_dist = torch.sum(diff_sim * torch.log(diff_sim/M) + latent_t * torch.log(latent_t/M))
-
-#     else:
-#         raise ValueError("`dist_model` should only be `mse` or `inner_product`")
-
-#     return loss_dist
-
-# def pearson(z, diff_sim):
-#     latent_sim = torch.mm(z, z.T)   
-#     var_latent_sim = latent_sim - torch.mean(latent_sim)
-#     var_diff_sim = (diff_sim - torch.mean(diff_sim))
-
-#     score = torch.sum(var_latent_sim * var_diff_sim) / (torch.sqrt(torch.sum(var_latent_sim ** 2)) * torch.sqrt(torch.sum(var_diff_sim ** 2)))
-
-#     return - score
-
 
 def dist_loss(z, diff_sim, mask = None, mode = "mse"):
     # cosine similarity loss
@@ -140,39 +73,21 @@ def dist_loss(z, diff_sim, mask = None, mode = "mse"):
     return loss_dist
 
 
-# def sim_loss(z, sim_x):
-#     sim_z = torch.mm(z, z.T)
-#     sim_z = sim_z/torch.norm(sim_z)
-#     # when the norm of z is constant, using inner product the same as mse
-#     loss_dist = - torch.sum(sim_z * sim_x) 
-#     return loss_dist
+# def recon_loss(recon_x, x, recon_mode = "original"):
 
-
-# def sim_loss_tsne(z, sim_x):
-#     sim_x = sim_x/torch.sum(sim_x)
-
-#     latent_sim = pairwise_distance(z)
-#     latent_sim = 1 / (1 + latent_sim ** 2)
-#     latent_sim = latent_sim / torch.sum(latent_sim)
-
-#     loss_kl = torch.sum(sim_x * torch.log(sim_x/latent_sim))
-#     return loss_kl
-
-def recon_loss(recon_x, x, recon_mode = "original"):
-
-    if recon_mode == "original":
-        loss_recon = F.mse_loss(recon_x, x)
-    elif recon_mode == "relative":
-        mean_recon = torch.mean(recon_x, dim = 0)
-        var_recon = torch.var(recon_x, dim = 0)
-        mean_x = torch.mean(x, dim = 0)
-        var_x = torch.var(x, dim = 0)
-        # relative loss
-        loss_recon = F.mse_loss(torch.div(torch.add(x, -1.0 * mean_x), (torch.sqrt(var_x + 1e-12)+1e-12)), torch.div(torch.add(x, -1.0 * mean_recon), (torch.sqrt(var_recon + 1e-12)+1e-12)))
-    elif recon_mode == "binary":
-        loss_recon = F.binary_cross_entropy(input = recon_x, target = x)
+#     if recon_mode == "original":
+#         loss_recon = F.mse_loss(recon_x, x)
+#     elif recon_mode == "relative":
+#         mean_recon = torch.mean(recon_x, dim = 0)
+#         var_recon = torch.var(recon_x, dim = 0)
+#         mean_x = torch.mean(x, dim = 0)
+#         var_x = torch.var(x, dim = 0)
+#         # relative loss
+#         loss_recon = F.mse_loss(torch.div(torch.add(x, -1.0 * mean_x), (torch.sqrt(var_x + 1e-12)+1e-12)), torch.div(torch.add(x, -1.0 * mean_recon), (torch.sqrt(var_recon + 1e-12)+1e-12)))
+#     elif recon_mode == "binary":
+#         loss_recon = F.binary_cross_entropy(input = recon_x, target = x)
     
-    else:
-        raise ValueError("recon_mode can only be original or relative")
+#     else:
+#         raise ValueError("recon_mode can only be original or relative")
     
-    return loss_recon
+#     return loss_recon

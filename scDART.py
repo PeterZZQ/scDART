@@ -44,20 +44,47 @@ class scDART(object):
 
         Parameters:
         ------------
-            n_epochs: number of epochs. Default: 700
-            batch_size: batch size for each iteration. Default: None, divide the data into 5 batches.
-            learning_rate: learning_rate parameter of sgd. Default: 5e-4
-            latent_dim: latent dimensions of the model. Default: 8
-            ts: t used for diffusion distance calculation. Default [20,30,50]
-            use_anchor: using anchor information for embedding match. Default: False
-            n_anchor: number of anchor cells used for distance calculation. Default: None (exact mode)
-            use_potential: use potential distance or not. Default: False.
-            k: neighborhood size for post processing. Default: 3.
-            reg_d: distance regularization. Default: 1
-            reg_g: genact regularization. Default: 1
-            reg_mmd: mmd regularization. Default: 1
-            l_dist_type: 'kl' or 'mse'.
-            device: the torch device on which memory is allocated.
+            n_epochs: int, default = 700
+                number of epochs.
+            
+            batch_size: int, default = None
+                batch size for each iteration. If None, divide the data into 5 batches.
+            
+            learning_rate: float, default: 5e-4
+                learning_rate parameter of sgd. 
+            
+            latent_dim: int, default: 8
+                latent dimensions of the model.
+            
+            ts: list of int, default [20,30,50]
+                t used for diffusion distance calculation.
+            
+            use_anchor: bool, default: False
+                using anchor information for embedding match.
+            
+            n_anchor: int, default: None (exact mode)
+                number of anchor cells used for distance calculation.
+            
+            use_potential: bool, default: False
+                use potential distance or not.
+            
+            k: int, default: 3
+                neighborhood size for post processing. Default: 3.
+            
+            reg_d: int or float, default: 1
+                distance regularization. Default: 1
+
+            reg_g: int or float, default: 1
+                genact regularization. Default: 1
+
+            reg_mmd: int or float, default: 1
+                mmd regularization. Default: 1
+
+            l_dist_type: default: 'kl'
+                'kl' or 'mse'.
+
+            device: torch device, default: torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                the torch device on which memory is allocated.
         
         Return:
         ------------
@@ -90,12 +117,32 @@ class scDART(object):
     def fit(self, rna_count, atac_count, reg, rna_anchor = None, atac_anchor = None):
 
         """\
-            Build scDART model using the dataset
+        Description:
+        ------------
+            Train scDART model
+
+        Parameters:
+        ------------
+            rna_count: ndarray
+                rna gene count
+            
+            atac_count: ndarray
+                atac gene count
+            
+            reg: ndarray
+                gene activation
+
+            rna_anchor: ndarray, default: None
+                rna anchor index
+
+            atac_anchor: ndarray, default: None
+                atac anchor index
+        
+        Return:
+        ------------
+            self
         """
 
-        # TODO: check: fit function is very similar to fit_transform except it does not store z_rna and z_atac
-        # TODO: test this
-        # TODO: Fix data preprocessing in dataset.py
         self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
         coarse_reg = torch.FloatTensor(reg).to(self.device)
@@ -127,17 +174,45 @@ class scDART(object):
                                                         )
         
         print("Fit finished")
+
+        return(self)
     
+
     def transform(self, rna_count, atac_count, rna_anchor = None, atac_anchor = None):
+        
         """\
-            Merge latent space
+        Description:
+        ------------
+            Induce rna latent space and atac latent space 
+
+        Parameters:
+        ------------
+            rna_count: ndarray
+                rna gene count
+            
+            atac_count: ndarray
+                atac gene count
+            
+            reg: ndarray
+                gene activation
+
+            rna_anchor: ndarray, default: None
+                rna anchor index
+
+            atac_anchor: ndarray, default: None
+                atac anchor index
+        
+        Return:
+        ------------
+            z_rna: ndarray
+                rna latent space
+            z_atac: ndarray
+                atac latent space
         """
 
-        #TODO: test this
         if self.model_dict is None:
             assert("Model does not exist. Please train a model with fit function")
 
-        # TODO: Fix data preprocessing
         self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
 
@@ -154,6 +229,7 @@ class scDART(object):
         # post-maching
         self.z_rna, self.z_atac = palign.match_alignment(z_rna = self.z_rna, z_atac = self.z_atac, k = self.k)
         self.z_atac, self.z_rna = palign.match_alignment(z_rna = self.z_atac, z_atac = self.z_rna, k = self.k)
+        self.z_rna, self.z_atac = self.z_rna.numpy(), self.z_atac.numpy()
 
         print("Transform finished")
 
@@ -163,10 +239,35 @@ class scDART(object):
     def fit_transform(self, rna_count, atac_count, reg, rna_anchor = None, atac_anchor = None):
 
         """\
-            Build scDART model using the dataset. Merge latent space.
+        Description:
+        ------------
+            Train scDART model. Induce rna latent space and atac latent space.
+
+        Parameters:
+        ------------
+            rna_count: ndarray
+                rna gene count
+            
+            atac_count: ndarray
+                atac gene count
+            
+            reg: ndarray
+                gene activation
+
+            rna_anchor: ndarray, default: None
+                rna anchor index
+
+            atac_anchor: ndarray, default: None
+                atac anchor index
+        
+        Return:
+        ------------
+            z_rna: ndarray
+                rna latent space
+            z_atac: ndarray
+                atac latent space
         """
 
-        #TODO: test this
         self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
         if len(reg) == 0:
@@ -182,7 +283,6 @@ class scDART(object):
 
         print("Loaded dataset")
 
-        #TODO: check layers
         EMBED_CONFIG = {
             'gact_layers': [self.atac_dataset.counts.shape[1], 512, 256, self.rna_dataset.counts.shape[1]], 
             'proj_layers': [self.rna_dataset.counts.shape[1], 128] + [self.latent_dim], # number of nodes in each 
@@ -210,42 +310,97 @@ class scDART(object):
         # post-maching
         self.z_rna, self.z_atac = palign.match_alignment(z_rna = self.z_rna, z_atac = self.z_atac, k = self.k)
         self.z_atac, self.z_rna = palign.match_alignment(z_rna = self.z_atac, z_atac = self.z_rna, k = self.k)
+        self.z_rna, self.z_atac = self.z_rna.numpy(), self.z_atac.numpy()
+
         print("Fit and transform finished")
 
         return self.z_rna, self.z_atac
 
 
 
-    def load_model(self, save_path = None):
+    def load_model(self, save_path):
 
         """\
+        Description:
+        ------------
             Load model
+
+        Parameters:
+        ------------
+            save_path: str
+                path to file
+        
+        Return:
+        ------------
+            None
         """
 
-        #TODO: check this code
         self.model_dict = torch.load(save_path)
         print(self.model_dict)
         print("Model loaded")
 
 
-    def save_model(self, save_path = None):
+    def save_model(self, save_path):
 
         """\
-            Save model
+        Description:
+        ------------
+            Init model
+
+        Parameters:
+        ------------
+            n_epochs: 
+                number of epochs. Default: 700
+        
+        Return:
+        ------------
+            None
         """
 
-        #TODO: check this code
         if self.model_dict is None:
             assert("No model to save.")
+        if save_path is None:
+            assert("Please provide a path")
 
         torch.save(self.model_dict, save_path)
         print("Model saved")
 
+
     def visualize(self, rna_anno = None, atac_anno = None, mode = "embedding", save_path = None, **kwargs):
 
         """\
-            Visualize merged latent space
+        Description:
+        ------------
+            visualize joint latent space
+
+        Parameters:
+        ------------
+            rna_anno: ndarray, default: None
+                rna cell label
+            
+            atac_anno: ndarray, default: None
+                atac cell label
+
+            mode: "embedding", "backbone", "pseudotime"
+                visulization mode
+
+            save_path: str, default: None
+                path to save the visualization
+
+            resolution: float, default: 0.5
+                parameter of ti backbone
+
+            n_neigh: int, default: 10
+                parameter of ti backbone
+
+            fig_size: int or list of int, default: (10, 7)
+                size of the figure
+        
+        Return:
+        ------------
+            None
         """
+
         _kwargs = {
             "resolution": 0.5,
             "n_neigh": 10,
@@ -253,25 +408,24 @@ class scDART(object):
         }
         _kwargs.update(kwargs)
 
-        #TODO: test this
         if self.z_rna is None or self.z_atac is None:
             assert("Latent space does not exist")
 
         if mode == "embedding":
             pca_op = PCA(n_components = 2)
-            z = pca_op.fit_transform(np.concatenate((self.z_rna.numpy(), self.z_atac.numpy()), axis = 0))
+            z = pca_op.fit_transform(np.concatenate((self.z_rna, self.z_atac), axis = 0))
             z_rna_pca = z[:self.z_rna.shape[0],:]
             z_atac_pca = z[self.z_rna.shape[0]:,:]
 
             if rna_anno is not None and atac_anno is not None:
                 utils.plot_latent(z1 = z_rna_pca, z2 = z_atac_pca, anno1 = rna_anno, 
                     anno2 = atac_anno, mode = "joint",
-                    save = save_path, figsize = _kwargs['figsize'], axis_label = "PCA")
+                    save = save_path, figsize = _kwargs['fig_size'], axis_label = "PCA")
 
 
             utils.plot_latent(z1 = z_rna_pca, z2 = z_atac_pca, anno1 = rna_anno,
                 anno2 = atac_anno, mode = "modality", 
-                save = save_path, figsize = _kwargs['figsize'], axis_label = "PCA")
+                save = save_path, figsize = _kwargs['fig_size'], axis_label = "PCA")
 
         if mode == "backbone" or mode == "pseudotime":
             dpt_mtx = ti.dpt(np.concatenate((self.z_rna, self.z_atac), axis = 0), n_neigh = _kwargs['n_neigh'])
@@ -291,10 +445,10 @@ class scDART(object):
 
             if mode == "backbone":
                 utils.plot_backbone(ae_rna, ae_atac, mode = "joint", mean_cluster = mean_cluster, groups = groups, T = T, 
-                    figsize=_kwargs['figsize'], save = save_path, anno1 = rna_anno, anno2 = atac_anno, axis_label = "PCA")
+                    figsize=_kwargs['fig_size'], save = save_path, anno1 = rna_anno, anno2 = atac_anno, axis_label = "PCA")
             if mode == "pseudotime":
                 utils.plot_latent_pt(ae_rna, ae_atac, pt1 = pt_infer[:ae_rna.shape[0]], pt2 = pt_infer[ae_rna.shape[0]:], 
-                    mode = "joint", save = save_path, figsize = _kwargs['figsize'], axis_label = "PCA")
+                    mode = "joint", save = save_path, figsize = _kwargs['fig_size'], axis_label = "PCA")
 
         else:
             assert("Please use embedding, backbone, or pseudotime mode")

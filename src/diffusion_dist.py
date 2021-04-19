@@ -9,24 +9,6 @@ from sklearn.metrics import pairwise_distances
 
 warnings.filterwarnings('ignore')
 
-# def _pairwise_distances(x, y = None):
-#     # o(n*d)
-#     x_norm = (x**2).sum(1).view(-1, 1)
-#     # calculate the pairwise distance between two datasets
-#     if y is not None:
-#         y_t = torch.transpose(y, 0, 1)
-#         y_norm = (y**2).sum(1).view(1, -1)
-#     else:
-#         y_t = torch.transpose(x, 0, 1)
-#         y_norm = x_norm.view(1, -1)
-    
-#     # o(n*d) + o(n*d) + o(n*n*d)
-#     dist = x_norm + y_norm - 2.0 * torch.mm(x, y_t)
-#     # Ensure diagonal is zero if x=y
-#     if y is None:
-#         dist = dist - torch.diag(dist.diag)
-
-#     return torch.clamp(dist, 0.0, np.inf)
 
 def lsi_ATAC(X, k = 100, use_first = False):
     """\
@@ -65,13 +47,6 @@ def lsi_ATAC(X, k = 100, use_first = False):
     else:
         return lsi_r[:, 1:]
 
-def quantile_norm(dist_mtx, reference, replace = False):
-    # sampling and don't put back
-    reference = np.sort(np.random.choice(reference, dist_mtx.shape[0] * dist_mtx.shape[1], replace = replace))
-    dist_temp = dist_mtx.reshape(-1)
-    dist_idx = np.argsort(dist_temp)
-    dist_temp[dist_idx] = reference
-    return dist_temp.reshape(dist_mtx.shape[0], dist_mtx.shape[1])
 
 def phate_similarity(data, n_neigh = 5, t = 5, use_potential = True, n_pca = 100, num_anchor = None, method = "exact", **kwargs):
     """\

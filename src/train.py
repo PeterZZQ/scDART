@@ -47,15 +47,13 @@ def scDART_train(EMBED_CONFIG, reg_mtx, train_rna_loader, train_atac_loader, tes
         genact = model.gene_act(features = EMBED_CONFIG["gact_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(device)
         encoder = model.Encoder(features = EMBED_CONFIG["proj_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(device)
         decoder = model.Decoder(features = EMBED_CONFIG["proj_layers"][::-1], dropout_rate = 0.0, negative_slope = 0.2).to(device)
-        genact_t = model.gene_act_t(features = EMBED_CONFIG["gact_layers"][::-1], dropout_rate = 0.0, negative_slope = 0.2).to(device)
-        model_dict = {"gene_act": genact, "encoder": encoder, "decoder": decoder, "gene_act_t": genact_t}
+        model_dict = {"gene_act": genact, "encoder": encoder, "decoder": decoder}
 
         learning_rate = EMBED_CONFIG['learning_rate']
         opt_genact = torch.optim.Adam(genact.parameters(), lr = learning_rate)
         opt_encoder = torch.optim.Adam(encoder.parameters(), lr = learning_rate)
         opt_decoder = torch.optim.Adam(decoder.parameters(), lr = learning_rate)
-        opt_genact_t = torch.optim.Adam(genact_t.parameters(), lr = learning_rate)
-        opt_dict = {"gene_act": opt_genact, "encoder": opt_encoder, "decoder": opt_decoder, "gene_act_t": opt_genact_t}
+        opt_dict = {"gene_act": opt_genact, "encoder": opt_encoder, "decoder": opt_decoder}
 
         print("Model:", model_dict)
 
@@ -184,92 +182,27 @@ def match_latent(model, opts, dist_atac, dist_rna, data_loader_rna, data_loader_
             for i in info:
                 print("\t", i)
 
+# def infer_gact(model, mask, thresh = None):
+#     W = None
 
-def train_gact(model, opts, data_loader_rna, data_loader_atac, z_rna, z_atac, n_epochs, reg_mtx, 
-               reg_g = 1, use_anchor = False, norm = "l1"):
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    reg_mtx = reg_mtx.T.type(torch.bool)
-    batch_size = data_loader_rna.batch_size
-
-    for epoch in range(n_epochs):
-        ave_loss_atac = 0
-        ave_loss_rna = 0
-        ave_loss_genact = 0
-
-        for data in zip(data_loader_atac, data_loader_rna):
-            # data batch
-            data_atac, data_rna = data
-
-            opts["decoder"].zero_grad()
-            opts["gene_act_t"].zero_grad()
-            
-            b_x_atac = data_atac["count"].to(device)
-            b_x_rna = data_rna['count'].to(device)
-
-            b_idx_atac = data_atac["index"].to(device)
-            b_idx_rna = data_rna["index"].to(device)
-
-            b_z_atac = z_atac[b_idx_atac,:]
-            b_z_rna = z_rna[b_idx_rna,:]
-            
-            # the last batch is not full size
-            if (min(b_x_atac.shape[0], b_x_rna.shape[0]) < batch_size): 
-                continue
-            
-            b_x_r_rna = model["decoder"](b_z_rna)
-            b_x_r_atac = model["gene_act_t"](model["decoder"](b_z_atac))
-            loss_r_rna = loss.recon_loss(b_x_r_rna, b_x_rna, recon_mode = "original")
-            loss_r_atac = loss.recon_loss(b_x_r_atac, b_x_atac, recon_mode = "original")
-            loss_genact = reg_g * loss.pinfo_loss(model["gene_act_t"], ~reg_mtx, norm = norm)
-            loss_total = loss_r_atac + loss_r_rna + loss_genact
-            
-            loss_total.backward()
-            opts["decoder"].step()
-            opts["gene_act_t"].step()
-
-            ave_loss_atac += loss_r_atac
-            ave_loss_rna += loss_r_rna
-            ave_loss_genact += loss_genact
-
-        ave_loss_atac /= min(len(data_loader_atac), len(data_loader_rna))
-        ave_loss_rna /= min(len(data_loader_atac), len(data_loader_rna))
-        ave_loss_genact /= min(len(data_loader_atac), len(data_loader_rna))
-
-        if epoch % 10 == 0:
-            info = [
-                'ATAC recon loss: {:.5f}'.format(ave_loss_atac.item()),
-                'RNA recon loss: {:.5f}'.format(ave_loss_rna.item()),
-                'gene activity loss: {:.5f}'.format(ave_loss_genact.item())
-            ]
-
-
-            print("epoch: ", epoch)
-            for i in info:
-                print("\t", i)
-
-
-def infer_gact(model, mask, thresh = None):
-    W = None
-
-    for _, layers in model.fc_layers.named_children():
-        for name, layer in layers.named_children():
-            if name[:3] == "lin":
-                if W is None:
-                    W = layer.weight
-                else:
-                    W = torch.mm(layer.weight,W)
+#     for _, layers in model.fc_layers.named_children():
+#         for name, layer in layers.named_children():
+#             if name[:3] == "lin":
+#                 if W is None:
+#                     W = layer.weight
+#                 else:
+#                     W = torch.mm(layer.weight,W)
     
-    if W.shape[0] == mask.shape[0]:
-        gact = torch.abs(mask * W)
-    else:
-        gact = torch.abs(mask * W.T)
+#     if W.shape[0] == mask.shape[0]:
+#         gact = torch.abs(mask * W)
+#     else:
+#         gact = torch.abs(mask * W.T)
     
-    if thresh is None:
-        thresh = 1
+#     if thresh is None:
+#         thresh = 1
     
-    thresh = thresh * (torch.max(gact) + torch.min(gact))/2
-    gact = (gact >= thresh)
+#     thresh = thresh * (torch.max(gact) + torch.min(gact))/2
+#     gact = (gact >= thresh)
 
-    return gact
+#     return gact
 
