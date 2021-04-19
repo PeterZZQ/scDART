@@ -51,16 +51,13 @@ pip uninstall scdart
 
 ## Usage
 
-TO BE ADDED
+See `Example/demo.ipynb`.
 
-## Datasets
+## Benchmark
 
-* You can access the real dataset that we used for the benchmarking through: https://www.dropbox.com/sh/nix4wnoiwda5id5/AACTxvGTQ82UzwMJs2IWSriKa?dl=0. You can reproduce the result by putting the file into the root directory and run the notebook in `./Examples/`. 
+See [https://github.com/PeterZZQ/scDART_bmk](https://github.com/PeterZZQ/scDART_bmk) for the benchmark result.
 
-  * `./Examples/CellPath_hema.ipynb`: mouse hematopoiesis dataset.
-  * `./Examples/CellPath_dg.ipynb`: dentate-gyrus dataset.
-  * `./Examples/CellPath_pe.ipynb`: pancreatic endocrinogenesis dataset.
-  * `./Examples/CellPath_forebrain.ipynb`: forebrain dataset.
+
 
 
 ## Contents
