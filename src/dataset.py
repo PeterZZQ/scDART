@@ -18,28 +18,30 @@ class AddGaussianNoise(object):
 
 #TODO: IMPORTANT! Check data preprocess
 class dataset(Dataset):
-    def __init__(self, counts_dir, anno_dir, anchor = None):
-        counts = pd.read_csv(counts_dir, index_col=0).values
-        if len(counts) == 0: 
-            print("Count file does not exist")
-            return
+    """\
+        Description:
+        ------------
+            Create Pytorch Dataset
 
-        cell_labels = []
-        with open(anno_dir, "r") as fp:
-            for i in fp:
-                cell_labels.append(i.strip("\n"))
-        cell_labels = np.array(cell_labels)
-        if len(cell_labels) == 0:
-            print("Annotation file does not exist")
-            return
+        Parameters:
+        ------------
+            counts: gene count. Type: numpy ndarrary
+            anchor: anchor index. Type: numpy ndarray.
+        
+        Return:
+        ------------
+            Dataset
+        """
+    def __init__(self, counts, anchor = None):
+
+        if len(counts) == 0: 
+            assert("Count is empty")
 
         self.counts = torch.FloatTensor(counts)
-        self.cell_labels = cell_labels
 
+        self.is_anchor = np.zeros(self.counts.shape[0]).astype("bool")    
         if anchor is not None:
-            self.is_anchor = (self.cell_labels == anchor)
-        else:
-            self.is_anchor = np.zeros(self.cell_labels.shape[0]).astype("bool")    
+            self.is_anchor[anchor] = True
         
         self.is_anchor = torch.tensor(self.is_anchor)
                    

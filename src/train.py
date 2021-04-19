@@ -11,13 +11,13 @@ import src.post_align as palign
 
 def scDART_train(EMBED_CONFIG, reg_mtx, train_rna_loader, train_atac_loader, test_rna_loader, test_atac_loader, \
     n_epochs = 1001, use_anchor = True, n_anchor = None, ts = None, reg_d = 1, reg_g = 1, reg_mmd = 1, \
-        l_dist_type = 'kl', k = 3, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+        l_dist_type = 'kl', device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
         
         """\
             Train scDART model
         """
 
-        print("Device: " + device)
+        print("Device: ", device)
 
         #TODO: check parameters, fixed or hyperparamters
         # calculate the distance
@@ -57,25 +57,25 @@ def scDART_train(EMBED_CONFIG, reg_mtx, train_rna_loader, train_atac_loader, tes
         opt_genact_t = torch.optim.Adam(genact_t.parameters(), lr = learning_rate)
         opt_dict = {"gene_act": opt_genact, "encoder": opt_encoder, "decoder": opt_decoder, "gene_act_t": opt_genact_t}
 
-        print("Model:" + model_dict)
+        print("Model:", model_dict)
 
         match_latent(model = model_dict, opts = opt_dict, dist_atac = dist_atac, dist_rna = dist_rna, 
                             data_loader_rna = train_rna_loader, data_loader_atac = train_atac_loader, n_epochs = n_epochs, 
                             reg_mtx = reg_mtx, reg_d = reg_d, reg_g = reg_g, reg_mmd = reg_mmd, use_anchor = use_anchor, norm = "l1", 
                             mode = l_dist_type)
 
-        with torch.no_grad():
-            for data in test_rna_loader:
-                z_rna = model_dict["encoder"](data['count'].to(device)).cpu().detach()
+        # with torch.no_grad():
+        #     for data in test_rna_loader:
+        #         z_rna = model_dict["encoder"](data['count'].to(device)).cpu().detach()
 
-            for data in test_atac_loader:
-                z_atac = model_dict["encoder"](model_dict["gene_act"](data['count'].to(device))).cpu().detach()
+        #     for data in test_atac_loader:
+        #         z_atac = model_dict["encoder"](model_dict["gene_act"](data['count'].to(device))).cpu().detach()
 
-        # post-maching
-        z_rna, z_atac = palign.match_alignment(z_rna = z_rna, z_atac = z_atac, k = k)
-        z_atac, z_rna = palign.match_alignment(z_rna = z_atac, z_atac = z_rna, k = k)
+        # # post-maching
+        # z_rna, z_atac = palign.match_alignment(z_rna = z_rna, z_atac = z_atac, k = k)
+        # z_atac, z_rna = palign.match_alignment(z_rna = z_atac, z_atac = z_rna, k = k)
     
-        return model_dict, z_rna, z_atac
+        return model_dict
 
 
 def _train_mmd(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist_rna, 

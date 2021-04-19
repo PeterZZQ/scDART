@@ -87,7 +87,7 @@ class scDART(object):
         self.z_atac = None
 
     
-    def fit(self, data):
+    def fit(self, rna_count, atac_count, reg, rna_anchor = None, atac_anchor = None):
 
         """\
             Build scDART model using the dataset
@@ -96,11 +96,9 @@ class scDART(object):
         # TODO: check: fit function is very similar to fit_transform except it does not store z_rna and z_atac
         # TODO: test this
         # TODO: Fix data preprocessing in dataset.py
-        rna_count, rna_anno, rna_anchor, atac_count, atac_anno, atac_anchor, reg = data 
-        self.rna_dataset = dataset.dataset(rna_count, rna_anno, rna_anchor)
-        self.atac_dataset = dataset.dataset(atac_count, atac_anno, atac_anchor)
-        # TODO: Fix data preprocessing
-        coarse_reg = torch.FloatTensor(pd.read_csv(reg, sep = "\t", index_col = 0, header = None).values).to(self.device)
+        self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
+        self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
+        coarse_reg = torch.FloatTensor(reg).to(self.device)
 
         batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
         
@@ -117,7 +115,7 @@ class scDART(object):
             'learning_rate': self.learning_rate
         }
 
-        self.model_dict, _, _ = train.scDART_train(EMBED_CONFIG = EMBED_CONFIG, reg_mtx = coarse_reg, 
+        self.model_dict = train.scDART_train(EMBED_CONFIG = EMBED_CONFIG, reg_mtx = coarse_reg, 
                                                         train_rna_loader = train_rna_loader, 
                                                         train_atac_loader = train_atac_loader, 
                                                         test_rna_loader = test_rna_loader, 
@@ -125,56 +123,55 @@ class scDART(object):
                                                         n_epochs = self.n_epochs + 1, use_anchor = self.use_anchor,
                                                         n_anchor = self.n_anchor, ts = self.ts, reg_d = self.reg_d,
                                                         reg_g = self.reg_g, reg_mmd = self.reg_mmd, 
-                                                        l_dist_type= self.l_dist_type, k = self.k, device = self.device
+                                                        l_dist_type= self.l_dist_type, device = self.device
                                                         )
         
         print("Fit finished")
     
-    def transform(self, data):
+    def transform(self, rna_count, atac_count, rna_anchor = None, atac_anchor = None):
         """\
             Merge latent space
         """
 
         #TODO: test this
-        if model_dict is None:
-            print("Model does not exist. Please train a model with fit function")
-            return
+        if self.model_dict is None:
+            assert("Model does not exist. Please train a model with fit function")
 
         # TODO: Fix data preprocessing
-        rna_count, rna_anno, rna_anchor, atac_count, atac_anno, atac_anchor, reg = data 
-        self.rna_dataset = dataset.dataset(rna_count, rna_anno, rna_anchor)
-        self.atac_dataset = dataset.dataset(atac_count, atac_anno, atac_anchor)
+        self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
+        self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
 
         test_rna_loader = DataLoader(self.rna_dataset, batch_size = len(self.rna_dataset), shuffle = False)
         test_atac_loader = DataLoader(self.atac_dataset, batch_size = len(self.atac_dataset), shuffle = False)
 
         with torch.no_grad():
             for data in test_rna_loader:
-                z_rna = model_dict["encoder"](data['count'].to(self.device)).cpu().detach()
+                self.z_rna = self.model_dict["encoder"](data['count'].to(self.device)).cpu().detach()
 
             for data in test_atac_loader:
-                z_atac = model_dict["encoder"](model_dict["gene_act"](data['count'].to(self.device))).cpu().detach()
+                self.z_atac = self.model_dict["encoder"](self.model_dict["gene_act"](data['count'].to(self.device))).cpu().detach()
 
         # post-maching
-        self.z_rna, self.z_atac = palign.match_alignment(z_rna = z_rna, z_atac = z_atac, k = self.k)
-        self.z_atac, self.z_rna = palign.match_alignment(z_rna = z_atac, z_atac = z_rna, k = self.k)
+        self.z_rna, self.z_atac = palign.match_alignment(z_rna = self.z_rna, z_atac = self.z_atac, k = self.k)
+        self.z_atac, self.z_rna = palign.match_alignment(z_rna = self.z_atac, z_atac = self.z_rna, k = self.k)
 
         print("Transform finished")
 
+        return self.z_rna, self.z_atac
 
-    def fit_transform(self, data):
+
+    def fit_transform(self, rna_count, atac_count, reg, rna_anchor = None, atac_anchor = None):
 
         """\
             Build scDART model using the dataset. Merge latent space.
         """
 
         #TODO: test this
-        # TODO: Fix data preprocessing
-        rna_count, rna_anno, rna_anchor, atac_count, atac_anno, atac_anchor, reg = data 
-        self.rna_dataset = dataset.dataset(rna_count, rna_anno, rna_anchor)
-        self.atac_dataset = dataset.dataset(atac_count, atac_anno, atac_anchor)
-        # TODO: Fix data preprocessing
-        coarse_reg = torch.FloatTensor(pd.read_csv(reg, sep = "\t", index_col = 0, header = None).values).to(self.device)
+        self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
+        self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
+        if len(reg) == 0:
+            assert("Gene activation is empty")
+        coarse_reg = torch.FloatTensor(reg).to(self.device)
         
         batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
 
@@ -192,7 +189,7 @@ class scDART(object):
             'learning_rate': self.learning_rate
         }
 
-        self.model_dict, _, _ = train.scDART_train(EMBED_CONFIG = EMBED_CONFIG, reg_mtx = coarse_reg, 
+        self.model_dict = train.scDART_train(EMBED_CONFIG = EMBED_CONFIG, reg_mtx = coarse_reg, 
                                                         train_rna_loader = train_rna_loader, 
                                                         train_atac_loader = train_atac_loader, 
                                                         test_rna_loader = test_rna_loader, 
@@ -200,25 +197,38 @@ class scDART(object):
                                                         n_epochs = self.n_epochs + 1, use_anchor = self.use_anchor,
                                                         n_anchor = self.n_anchor, ts = self.ts, reg_d = self.reg_d,
                                                         reg_g = self.reg_g, reg_mmd = self.reg_mmd, 
-                                                        l_dist_type= self.l_dist_type, k = self.k, device = self.device
+                                                        l_dist_type= self.l_dist_type, device = self.device
                                                         )
+        
+        with torch.no_grad():
+            for data in test_rna_loader:
+                self.z_rna = self.model_dict["encoder"](data['count'].to(self.device)).cpu().detach()
+
+            for data in test_atac_loader:
+                self.z_atac = self.model_dict["encoder"](self.model_dict["gene_act"](data['count'].to(self.device))).cpu().detach()
+
+        # post-maching
+        self.z_rna, self.z_atac = palign.match_alignment(z_rna = self.z_rna, z_atac = self.z_atac, k = self.k)
+        self.z_atac, self.z_rna = palign.match_alignment(z_rna = self.z_atac, z_atac = self.z_rna, k = self.k)
         print("Fit and transform finished")
 
+        return self.z_rna, self.z_atac
 
 
-    def load_model(self, file = None):
+
+    def load_model(self, save_path = None):
 
         """\
             Load model
         """
 
         #TODO: check this code
-        self.model_dict = torch.load(file)
+        self.model_dict = torch.load(save_path)
         print(self.model_dict)
         print("Model loaded")
 
 
-    def save_model(self, file = None):
+    def save_model(self, save_path = None):
 
         """\
             Save model
@@ -226,59 +236,65 @@ class scDART(object):
 
         #TODO: check this code
         if self.model_dict is None:
-            print("No model to save.")
-            return
-        torch.save(model, file)
+            assert("No model to save.")
+
+        torch.save(self.model_dict, save_path)
         print("Model saved")
 
-    def visualize(self, mode, save_path=None):
+    def visualize(self, rna_anno = None, atac_anno = None, mode = "embedding", save_path = None, **kwargs):
 
         """\
             Visualize merged latent space
         """
+        _kwargs = {
+            "resolution": 0.5,
+            "n_neigh": 10,
+            "fig_size": (10, 7)
+        }
+        _kwargs.update(kwargs)
 
         #TODO: test this
         if self.z_rna is None or self.z_atac is None:
-            print("Latent space does not exist")
-            return
+            assert("Latent space does not exist")
 
         if mode == "embedding":
             pca_op = PCA(n_components = 2)
             z = pca_op.fit_transform(np.concatenate((self.z_rna.numpy(), self.z_atac.numpy()), axis = 0))
-            z_rna_pca = z[:z_rna.shape[0],:]
-            z_atac_pca = z[z_rna.shape[0]:,:]
+            z_rna_pca = z[:self.z_rna.shape[0],:]
+            z_atac_pca = z[self.z_rna.shape[0]:,:]
 
-            utils.plot_latent(z1 = z_rna_pca, z2 = z_atac_pca, anno1 = self.rna_dataset.cell_labels, 
-                anno2 = self.atac_dataset.cell_labels, mode = "joint",
-                save = save_path, figsize = (10,7), axis_label = "PCA")
+            if rna_anno is not None and atac_anno is not None:
+                utils.plot_latent(z1 = z_rna_pca, z2 = z_atac_pca, anno1 = rna_anno, 
+                    anno2 = atac_anno, mode = "joint",
+                    save = save_path, figsize = _kwargs['figsize'], axis_label = "PCA")
 
 
-            utils.plot_latent(z1 = z_rna_pca, z2 = z_atac_pca, anno1 = self.rna_dataset.cell_labels,
-                anno2 = self.atac_dataset.cell_labels, mode = "modality", 
-                save = save_path, figsize = (10,7), axis_label = "PCA")
+            utils.plot_latent(z1 = z_rna_pca, z2 = z_atac_pca, anno1 = rna_anno,
+                anno2 = atac_anno, mode = "modality", 
+                save = save_path, figsize = _kwargs['figsize'], axis_label = "PCA")
 
         if mode == "backbone" or mode == "pseudotime":
-            dpt_mtx = ti.dpt(np.concatenate((z_rna, z_atac), axis = 0), n_neigh = 10)
+            dpt_mtx = ti.dpt(np.concatenate((self.z_rna, self.z_atac), axis = 0), n_neigh = _kwargs['n_neigh'])
             root_cell = 0
             pt_infer = dpt_mtx[root_cell, :]
             pt_infer[pt_infer.argsort()] = np.arange(len(pt_infer))
             pt_infer = pt_infer/np.max(pt_infer)
 
-            groups, mean_cluster, T = ti.backbone_inf(z_rna, z_atac, resolution = 0.5)
+            groups, mean_cluster, T = ti.backbone_inf(self.z_rna, self.z_atac, resolution = _kwargs['resolution'])
 
             pca_op = PCA(n_components=2)
-            ae_coord = pca_op.fit_transform(np.concatenate((z_rna, z_atac), axis = 0))
+            ae_coord = pca_op.fit_transform(np.concatenate((self.z_rna, self.z_atac), axis = 0))
             mean_cluster = pca_op.transform(np.array(mean_cluster))
 
-            ae_rna = ae_coord[:z_rna.shape[0],:]
-            ae_atac = ae_coord[z_rna.shape[0]:,:]
+            ae_rna = ae_coord[:self.z_rna.shape[0],:]
+            ae_atac = ae_coord[self.z_rna.shape[0]:,:]
 
             if mode == "backbone":
                 utils.plot_backbone(ae_rna, ae_atac, mode = "joint", mean_cluster = mean_cluster, groups = groups, T = T, 
-                    figsize=(10,7), save = save_path, anno1 = self.rna_dataset.cell_labels, anno2 = self.atac_dataset.cell_labels, axis_label = "PCA")
+                    figsize=_kwargs['figsize'], save = save_path, anno1 = rna_anno, anno2 = atac_anno, axis_label = "PCA")
             if mode == "pseudotime":
                 utils.plot_latent_pt(ae_rna, ae_atac, pt1 = pt_infer[:ae_rna.shape[0]], pt2 = pt_infer[ae_rna.shape[0]:], 
-                    mode = "joint", save = save_path, figsize = (10,7), axis_label = "PCA")
+                    mode = "joint", save = save_path, figsize = _kwargs['figsize'], axis_label = "PCA")
 
         else:
-            print("Please use embedding, backbone, or pseudotime mode")
+            assert("Please use embedding, backbone, or pseudotime mode")
