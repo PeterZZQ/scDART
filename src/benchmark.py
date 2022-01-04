@@ -85,6 +85,56 @@ def neigh_overlap(z_rna, z_atac, k = 30):
     return 0.5 * (np.sum(z1_z2) + np.sum(z2_z1))/dsize
 
 
+def F1_branches(branches, branches_gt):
+    recovery = 0
+    #  Recovery is the average maximal Jaccard for every cluster in the first set of clusters (the reference trajectory)
+    for branch_gt in np.sort(np.unique(branches_gt)):
+        # find cells in ground truth branch
+        cells_branch_gt = np.where(branches_gt == branch_gt)[0]
+        cells_branch_gt = set([x for x in cells_branch_gt])
+
+        max_jaccard = 0
+
+        for branch in np.sort(np.unique(branches)):
+            # find cells in the branch
+            cells_branch = np.where(branches == branch)[0]
+            cells_branch = set([x for x in cells_branch])
+            jaccard = len(cells_branch.intersection(cells_branch_gt))/len(cells_branch.union(cells_branch_gt))
+            max_jaccard = max([jaccard, max_jaccard])
+
+        # calculate the maximum jaccard score
+        # print("original trajectory: {:d}, Jaccard: {:.4f}".format(branch_gt, max_jaccard))
+        recovery += max_jaccard
+
+    recovery = recovery / np.sort(np.unique(branches_gt)).shape[0] 
+
+    relevence = 0
+    #  Relevence is the average maximal Jaccard for every cluster in the second set of clusters (the predict trajectory)
+    for branch in np.sort(np.unique(branches)):
+        # find cells in the branch
+        cells_branch = np.where(branches == branch)[0]
+        cells_branch = set([x for x in cells_branch])
+
+        max_jaccard = 0
+
+        for branch_gt in np.sort(np.unique(branches_gt)):
+            # find cells in ground truth branch
+            cells_branch_gt = np.where(branches_gt == branch_gt)[0]
+            cells_branch_gt = set([x for x in cells_branch_gt])
+            jaccard = len(cells_branch.intersection(cells_branch_gt))/len(cells_branch.union(cells_branch_gt))
+            max_jaccard = max([jaccard, max_jaccard])
+
+        # calculate the maximum jaccard score
+        # print("inferred trajectory: {:d}, Jaccard: {:.4f}".format(branch, max_jaccard))
+        relevence += max_jaccard
+
+    relevence = relevence / np.sort(np.unique(branches)).shape[0] 
+
+    F1 = 2/(1/recovery + 1/relevence)
+    return F1
+
+
+
 
 # def align_fraction(data1, data2):
 # 	row1, col1 = np.shape(data1)

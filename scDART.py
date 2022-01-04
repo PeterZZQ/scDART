@@ -32,9 +32,9 @@ import seaborn as sns
 
 class scDART(object):
 
-    def __init__(self, n_epochs = 700, batch_size = None, learning_rate = 5e-4, latent_dim = 8, \
-        ts = [20,30,50], use_anchor = False, n_anchor = None, use_potential = False, k = 3, \
-        reg_d = 1, reg_g = 1, reg_mmd = 1, l_dist_type = 'kl', 
+    def __init__(self, n_epochs = 700, batch_size = None, learning_rate = 3e-4, latent_dim = 8, \
+        ts = [30, 50, 70], use_anchor = False, use_potential = False, k = 3, \
+        reg_d = 1, reg_g = 1, reg_mmd = 1, l_dist_type = 'kl', seed = 0,\
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
 
         """\
@@ -56,14 +56,11 @@ class scDART(object):
             latent_dim: int, default: 8
                 latent dimensions of the model.
             
-            ts: list of int, default [20,30,50]
+            ts: list of int, default [30, 50, 70]
                 t used for diffusion distance calculation.
             
             use_anchor: bool, default: False
                 using anchor information for embedding match.
-            
-            n_anchor: int, default: None (exact mode)
-                number of anchor cells used for distance calculation.
             
             use_potential: bool, default: False
                 use potential distance or not.
@@ -98,7 +95,6 @@ class scDART(object):
         self.latent_dim = latent_dim
         self.use_anchor = use_anchor
         self.ts = ts
-        self.n_anchor = n_anchor
         self.use_potential = use_potential
         self.k = k
         self.reg_d = reg_d
@@ -112,6 +108,14 @@ class scDART(object):
         self.model_dict = None
         self.z_rna = None
         self.z_atac = None
+
+        self.seed = seed
+
+        # set the random seed
+        torch.manual_seed(self.seed)
+        torch.cuda.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
 
     
     def fit(self, rna_count, atac_count, reg, rna_anchor = None, atac_anchor = None):
@@ -147,32 +151,47 @@ class scDART(object):
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
         coarse_reg = torch.FloatTensor(reg).to(self.device)
 
-        batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
+        # batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/4) if self.batch_size is None else self.batch_size
+        batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/4)
         
         train_rna_loader = DataLoader(self.rna_dataset, batch_size = batch_size, shuffle = True)
         train_atac_loader = DataLoader(self.atac_dataset, batch_size = batch_size, shuffle = True)
-        test_rna_loader = DataLoader(self.rna_dataset, batch_size = len(self.rna_dataset), shuffle = False)
-        test_atac_loader = DataLoader(self.atac_dataset, batch_size = len(self.atac_dataset), shuffle = False)
 
         print("Loaded Dataset")
 
         EMBED_CONFIG = {
-            'gact_layers': [self.atac_dataset.counts.shape[1], 512, 256, self.rna_dataset.counts.shape[1]], 
-            'proj_layers': [self.rna_dataset.counts.shape[1], 128] + [self.latent_dim], # number of nodes in each 
-            'learning_rate': self.learning_rate
+            'gact_layers': [self.atac_dataset.counts.shape[1], 1024, 512, self.rna_dataset.counts.shape[1]], 
+            'proj_layers': [self.rna_dataset.counts.shape[1], 512, 128, self.latent_dim], # number of nodes in each 
         }
 
-        self.model_dict = train.scDART_train(EMBED_CONFIG = EMBED_CONFIG, reg_mtx = coarse_reg, 
-                                                        train_rna_loader = train_rna_loader, 
-                                                        train_atac_loader = train_atac_loader, 
-                                                        test_rna_loader = test_rna_loader, 
-                                                        test_atac_loader = test_atac_loader, 
-                                                        n_epochs = self.n_epochs + 1, use_anchor = self.use_anchor,
-                                                        n_anchor = self.n_anchor, ts = self.ts, reg_d = self.reg_d,
-                                                        reg_g = self.reg_g, reg_mmd = self.reg_mmd, 
-                                                        l_dist_type= self.l_dist_type, device = self.device
-                                                        )
+        # calculate the diffusion distance
+        dist_rna = diff.diffu_distance(self.rna_dataset.counts.numpy(), ts = self.ts,
+                                        use_potential = self.use_potential, dr = "pca", n_components = 30)
+
+        dist_atac = diff.diffu_distance(self.atac_dataset.counts.numpy(), ts = self.ts,
+                                        use_potential = self.use_potential, dr = "lsi", n_components = 30)
         
+        dist_rna = dist_rna/np.linalg.norm(dist_rna)
+        dist_atac = dist_atac/np.linalg.norm(dist_atac)
+        dist_rna = torch.FloatTensor(dist_rna).to(self.device)
+        dist_atac = torch.FloatTensor(dist_atac).to(self.device)
+
+        # initialize the model
+        gene_act = model.gene_act(features = EMBED_CONFIG["gact_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(self.device)
+        encoder = model.Encoder(features = EMBED_CONFIG["proj_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(self.device)
+        self.model_dict = {"gene_act": gene_act, "encoder": encoder}
+
+        opt_genact = torch.optim.Adam(gene_act.parameters(), lr = self.learning_rate)
+        opt_encoder = torch.optim.Adam(encoder.parameters(), lr = self.learning_rate)
+        opt_dict = {"gene_act": opt_genact, "encoder": opt_encoder}
+
+        # training models
+        train.match_latent(model = self.model_dict, opts = opt_dict, dist_atac = dist_atac, dist_rna = dist_rna, 
+                        data_loader_rna = train_rna_loader, data_loader_atac = train_atac_loader, n_epochs = self.n_epochs + 1, 
+                        reg_mtx = coarse_reg, reg_d = self.reg_d, reg_g = self.reg_g, reg_mmd = self.reg_mmd, use_anchor = self.use_anchor, norm = "l1", 
+                        mode = self.l_dist_type)
+
+
         print("Fit finished")
 
         return(self)
@@ -271,15 +290,15 @@ class scDART(object):
         self.rna_dataset = dataset.dataset(rna_count, rna_anchor)
         self.atac_dataset = dataset.dataset(atac_count, atac_anchor)
         coarse_reg = torch.FloatTensor(reg).to(self.device)
-        
-        batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/5) if self.batch_size is None else self.batch_size
 
+        batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/4) if self.batch_size is None else self.batch_size
+        
         train_rna_loader = DataLoader(self.rna_dataset, batch_size = batch_size, shuffle = True)
         train_atac_loader = DataLoader(self.atac_dataset, batch_size = batch_size, shuffle = True)
         test_rna_loader = DataLoader(self.rna_dataset, batch_size = len(self.rna_dataset), shuffle = False)
         test_atac_loader = DataLoader(self.atac_dataset, batch_size = len(self.atac_dataset), shuffle = False)
 
-        print("Loaded dataset")
+        print("Loaded Dataset")
 
         EMBED_CONFIG = {
             'gact_layers': [self.atac_dataset.counts.shape[1], 512, 256, self.rna_dataset.counts.shape[1]], 
@@ -287,17 +306,33 @@ class scDART(object):
             'learning_rate': self.learning_rate
         }
 
-        self.model_dict = train.scDART_train(EMBED_CONFIG = EMBED_CONFIG, reg_mtx = coarse_reg, 
-                                                        train_rna_loader = train_rna_loader, 
-                                                        train_atac_loader = train_atac_loader, 
-                                                        test_rna_loader = test_rna_loader, 
-                                                        test_atac_loader = test_atac_loader, 
-                                                        n_epochs = self.n_epochs + 1, use_anchor = self.use_anchor,
-                                                        n_anchor = self.n_anchor, ts = self.ts, reg_d = self.reg_d,
-                                                        reg_g = self.reg_g, reg_mmd = self.reg_mmd, 
-                                                        l_dist_type= self.l_dist_type, device = self.device
-                                                        )
+        # calculate the diffusion distance
+        dist_rna = diff.diffu_distance(self.rna_dataset.counts.numpy(), ts = self.ts,
+                                        use_potential = self.use_potential, dr = "pca", n_components = 30)
+
+        dist_atac = diff.diffu_distance(self.atac_dataset.counts.numpy(), ts = self.ts,
+                                        use_potential = self.use_potential, dr = "lsi", n_components = 30)
         
+        dist_rna = dist_rna/np.linalg.norm(dist_rna)
+        dist_atac = dist_atac/np.linalg.norm(dist_atac)
+        dist_rna = torch.FloatTensor(dist_rna).to(self.device)
+        dist_atac = torch.FloatTensor(dist_atac).to(self.device)
+
+        # initialize the model
+        gene_act = model.gene_act(features = EMBED_CONFIG["gact_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(self.device)
+        encoder = model.Encoder(features = EMBED_CONFIG["proj_layers"], dropout_rate = 0.0, negative_slope = 0.2).to(self.device)
+        self.model_dict = {"gene_act": gene_act, "encoder": encoder}
+
+        opt_genact = torch.optim.Adam(gene_act.parameters(), lr = self.learning_rate)
+        opt_encoder = torch.optim.Adam(encoder.parameters(), lr = self.learning_rate)
+        opt_dict = {"gene_act": opt_genact, "encoder": opt_encoder}
+
+        # training models
+        train.match_latent(model = self.model_dict, opts = opt_dict, dist_atac = dist_atac, dist_rna = dist_rna, 
+                        data_loader_rna = train_rna_loader, data_loader_atac = train_atac_loader, n_epochs = self.n_epochs, 
+                        reg_mtx = coarse_reg, reg_d = self.reg_d, reg_g = self.reg_g, reg_mmd = self.reg_mmd, use_anchor = self.use_anchor, norm = "l1", 
+                        mode = self.l_dist_type)
+                        
         with torch.no_grad():
             for data in test_rna_loader:
                 self.z_rna = self.model_dict["encoder"](data['count'].to(self.device)).cpu().detach()

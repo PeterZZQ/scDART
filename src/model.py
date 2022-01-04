@@ -66,6 +66,45 @@ class Encoder(nn.Module):
         x = self.output(x)
         return x
 
+# Encoder
+class Encoder_batches(nn.Module):
+    def __init__(self, features = [1024, 256, 32, 8], dropout_rate = 0.1, negative_slope = 0.2):
+        super(Encoder,self).__init__()
+        
+        self.features = features
+
+        # input layer
+        self.fc_input = FC(
+            features = self.features[0:2],
+            dropout_rate = dropout_rate,
+            negative_slope = negative_slope,
+            use_bias = True            
+        )
+        self.batch_layer = FC(
+            features = [1] + self.features[1],
+            dropout_rate = dropout_rate,
+            negative_slope = negative_slope,
+            use_bias = True
+        )
+
+        if len(self.features) > 3:
+            self.fc = FC(
+                features = self.features[2:-1],
+                dropout_rate = dropout_rate,
+                negative_slope = negative_slope,
+                use_bias = True
+            )
+
+        self.output = nn.Linear(self.features[-2], self.features[-1])
+
+
+    def forward(self, x, batch_id):
+        x = self.fc_input(x) + self.batch_layer(batch_id)
+        if len(self.features) > 3:
+            x = self.fc(x)
+        x = self.output(x)
+        return x
+
 
 # Decoder
 class Decoder(nn.Module):
@@ -105,6 +144,45 @@ class gene_act(nn.Module):
                                     ("linear", nn.Linear(n_in, n_out, bias = False),),
                                     ("batchnorm", nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001) if use_batch_norm else None,),
                                     ("act", nn.ReLU() if negative_slope <= 0 else nn.LeakyReLU(negative_slope = negative_slope),),
+                                    ("dropout", nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,),
+                                ]
+                            )
+                        ),
+                    )
+                    for i, (n_in, n_out) in enumerate(zip(self.features[:-1], self.features[1:]))
+                ]
+            )
+        )
+
+    def forward(self, x):
+        # loop through all layers
+        for layers in self.fc_layers:
+            # loop through linear, batchnorm, relu, dropout, etc
+            for layer in layers:
+                if layer is not None:
+                    x = layer(x)
+        
+        return x
+
+class gene_act_t(nn.Module):
+    def __init__(self, features = [500, 500, 1000], use_batch_norm = True, dropout_rate = 0.0, negative_slope = 0.2):
+        super(gene_act_t, self).__init__()
+
+        self.features = features
+        self.fc_layers = []
+
+        # create fc layers according to the layers_dim
+        self.fc_layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    (
+                        "Layer {}".format(i),
+                        nn.Sequential(
+                            collections.OrderedDict(
+                                [
+                                    ("linear", nn.Linear(n_in, n_out, bias = False),),
+                                    ("batchnorm", nn.BatchNorm1d(n_out, momentum=0.01, eps=0.001) if use_batch_norm else None,),
+                                    ("act", nn.LeakyReLU(negative_slope = negative_slope) if i < len(features)-1 else nn.Softmax(dim = 1),),
                                     ("dropout", nn.Dropout(p=dropout_rate) if dropout_rate > 0 else None,),
                                 ]
                             )

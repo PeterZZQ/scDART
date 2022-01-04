@@ -134,9 +134,8 @@ def nearest_neighbor(features, k = 15, sigma = 3):
     return connectivities, G
 
 
-def backbone_inf(z_rna, z_atac,resolution = 0.5):
+def backbone_inf(X, resolution = 0.5):
     import networkx as nx
-    X = np.concatenate((z_rna, z_atac), axis = 0)
     conn, G = nearest_neighbor(X, k = 15)
     groups, n_clust = leiden(conn, resolution=resolution)
 

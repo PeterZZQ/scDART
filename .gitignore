@@ -1,0 +1,5 @@
+data/simulated
+**/__pycache__
+**/.DS_Store
+data/snare-seq
+Examples/.ipynb_checkpoints
