@@ -1,34 +1,21 @@
 import sys, os
 sys.path.append('../')
-sys.path.insert(1, '/src/')
+sys.path.insert(1, '/scDART/')
 
 import numpy as np
-import pandas as pd
-from scipy import sparse
-from scipy.sparse import load_npz
 
 import torch
-import torch.nn.functional as F
-import torch.nn as nn
-import torch.optim as optim
-import matplotlib.pyplot as plt
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
 from sklearn.decomposition import PCA
-from sklearn.manifold import MDS
-from umap import UMAP
 
 import scDART.diffusion_dist as diff
 import scDART.dataset as dataset
 import scDART.model as model
-import scDART.loss as loss
 import scDART.train as train
 import scDART.utils as utils
 import scDART.post_align as palign
-import scDART.benchmark as bmk
 import scDART.TI as ti
-import networkx as nx
-import seaborn as sns
 
 class scDART(object):
 

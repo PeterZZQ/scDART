@@ -16,7 +16,7 @@ The preprint is available on bioarxiv: [https://www.biorxiv.org/content/10.1101/
 ## Dependencies
 
 ```
-Pytorch >= 3.6.0
+Pytorch >= 1.5.0
 
 numpy >= 1.18.2
 
