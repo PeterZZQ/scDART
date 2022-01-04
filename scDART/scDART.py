@@ -1,6 +1,6 @@
 import sys, os
 sys.path.append('../')
-sys.path.insert(1, '/scDART/')
+sys.path.insert(1, '/src/')
 
 import numpy as np
 import pandas as pd
@@ -18,15 +18,15 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import MDS
 from umap import UMAP
 
-import src.diffusion_dist as diff
-import src.dataset as dataset
-import src.model as model
-import src.loss as loss
-import src.train as train
-import src.utils as utils
-import src.post_align as palign
-import src.benchmark as bmk
-import src.TI as ti
+import scDART.diffusion_dist as diff
+import scDART.dataset as dataset
+import scDART.model as model
+import scDART.loss as loss
+import scDART.train as train
+import scDART.utils as utils
+import scDART.post_align as palign
+import scDART.benchmark as bmk
+import scDART.TI as ti
 import networkx as nx
 import seaborn as sns
 
