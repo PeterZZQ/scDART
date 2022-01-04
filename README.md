@@ -67,4 +67,4 @@ See [https://github.com/PeterZZQ/scDART_bmk](https://github.com/PeterZZQ/scDART_
 * `Example/` contains the demo code of scDART.
 
 ## Results in the preprint
-The benchmark code, data and results are available through: [https:github.com/PeterZZQ/scDART_test](https:github.com/PeterZZQ/scDART_tes) 
+The benchmark code, data and results are available through: [https:github.com/PeterZZQ/scDART_test](https:github.com/PeterZZQ/scDART_test) 
