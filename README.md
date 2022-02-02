@@ -68,3 +68,5 @@ See [https://github.com/PeterZZQ/scDART_bmk](https://github.com/PeterZZQ/scDART_
 
 ## Results in the preprint
 The benchmark code, data and results are available through: [https:github.com/PeterZZQ/scDART_test](https:github.com/PeterZZQ/scDART_test) 
+
+The script for data simulation can be found through: [https://github.com/PeterZZQ/Symsim2](https://github.com/PeterZZQ/Symsim2)
