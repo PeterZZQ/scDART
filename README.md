@@ -70,3 +70,6 @@ See [https://github.com/PeterZZQ/scDART_bmk](https://github.com/PeterZZQ/scDART_
 The benchmark code, data and results are available through: [https:github.com/PeterZZQ/scDART_test](https:github.com/PeterZZQ/scDART_test) 
 
 The script for data simulation can be found through: [https://github.com/PeterZZQ/Symsim2](https://github.com/PeterZZQ/Symsim2)
+
+## Cite
+**Zhang, Ziqi, Chengkai Yang, and Xiuwei Zhang. "Learning latent embedding of multi-modal single cell data and cross-modality relationship simultaneously." *bioRxiv* (2021).**
