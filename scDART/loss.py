@@ -40,10 +40,32 @@ def _gaussian_kernel_matrix(x, y, device):
     return result
 
 
-def maximum_mean_discrepancy(x, y, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')): #Function to calculate MMD value    
+def _maximum_mean_discrepancy(x, y, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')): #Function to calculate MMD value    
     cost = torch.mean(_gaussian_kernel_matrix(x, x, device))
     cost += torch.mean(_gaussian_kernel_matrix(y, y, device))
     cost -= 2.0 * torch.mean(_gaussian_kernel_matrix(x, y, device))
+    cost = torch.sqrt(cost ** 2 + 1e-9)
+    if cost.data.item()<0:
+        cost = torch.FloatTensor([0.0]).to(device)
+
+    return cost
+
+def maximum_mean_discrepancy(xs, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')): #Function to calculate MMD value
+    nbatches = len(xs)
+    ref_batch = 0
+    # assuming batch 0 is the reference batch
+    cost = 0
+    # within batch
+    for batch in range(nbatches):
+        if batch == ref_batch:
+            cost += (nbatches - 1) * torch.mean(_gaussian_kernel_matrix(xs[batch], xs[batch], device))
+        else:
+            cost += torch.mean(_gaussian_kernel_matrix(xs[batch], xs[batch], device))
+    
+    # between batches
+    for batch in range(1, nbatches):
+        cost -= 2.0 * torch.mean(_gaussian_kernel_matrix(xs[ref_batch], xs[batch], device))
+    
     cost = torch.sqrt(cost ** 2 + 1e-9)
     if cost.data.item()<0:
         cost = torch.FloatTensor([0.0]).to(device)

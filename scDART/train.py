@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F 
 import numpy as np
-import scDART.loss as loss
+import loss
 from torch.autograd import Variable
 from torch import autograd
 
@@ -40,7 +40,7 @@ def _train_mmd(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist_rna,
     loss_d_rna = reg_d * loss.dist_loss(z = b_z_rna, diff_sim = dist_rna, mode = mode)
 
     loss_genact = reg_g * loss.pinfo_loss(model["gene_act"], ~reg_mtx, norm = norm)
-    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy(b_z_atac, b_z_rna)
+    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy([b_z_atac, b_z_rna])
 
     loss_total = loss_d_atac + loss_genact + loss_d_rna + loss_mmd
     if anchor_idx_rna is not None and anchor_idx_atac is not None:
@@ -56,7 +56,67 @@ def _train_mmd(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist_rna,
     losses = {"loss_mmd": loss_mmd, "loss_d_atac": loss_d_atac, "loss_genact": loss_genact, "loss_d_rna": loss_d_rna, "loss_anchor": loss_anchor} 
     return losses
 
+def _train_mmd_ext(model, opts, b_x_rnas, b_x_atacs, reg_mtx, dist_atacs, dist_rnas, 
+               anchor_idx_rnas, anchor_idx_atacs, reg_anchor,
+               reg_d, reg_g, reg_mmd, norm, mode, device):
+    """\
+    Description:
+    ------------
+        training model on one batch of data
+    Parameter
+    ------------
+        model: neural network model
+        opts: dictionary of optimizer
+        b_x_rna: one batch of scRNA-Seq
+        b_x_atac: one batch of scATAC-Seq
+        reg_mtx: gene activity matrix
+        dist_atac: diffusion distance matrix of scATAC-Seq
+        dist_rna: diffusion distance matrix of scRNA-Seq
+        anchor_idx_rna: matching anchor for RNA
+        anchor_idx_atac: matching anchor for ATAC
+    """        
+    # train generator
+    opts["gene_act"].zero_grad()
+    opts["encoder"].zero_grad()
 
+    # forward pass and calculate the latent space
+    nbatches_atac = len(b_x_atacs)
+    nbatches_rna = len(b_x_rnas)
+    b_z_atacs = []
+    b_z_rnas = []
+    for batch in range(nbatches_atac):
+        b_z_atacs.append(model["encoder"](model["gene_act"](b_x_atacs[batch])))
+    for batch in range(nbatches_rna):
+        b_z_rnas.append(model["encoder"](b_x_rnas[batch]))
+
+    # regularization term
+    loss_d_atac = 0
+    loss_d_rna = 0
+    for batch in range(nbatches_rna):
+        loss_d_rna += reg_d * loss.dist_loss(z = b_z_rnas[batch], diff_sim = dist_rnas[batch], mode = mode)
+    for batch in range(nbatches_atac):
+        loss_d_atac += reg_d * loss.dist_loss(z = b_z_atacs[batch], diff_sim = dist_atacs[batch], mode = mode)
+    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy(b_z_rnas + b_z_atacs)
+
+    loss_genact = reg_g * loss.pinfo_loss(model["gene_act"], ~reg_mtx, norm = norm)
+
+    loss_total = loss_d_atac + loss_genact + loss_d_rna + loss_mmd
+    loss_anchor = 0
+    if anchor_idx_rnas is not None and anchor_idx_atacs is not None:
+        for batch in range(1, nbatches_rna):
+            loss_anchor += reg_anchor * torch.norm(torch.mean(b_z_rnas[batch][anchor_idx_rnas[batch],:], dim = 0) - torch.mean(b_z_rnas[0][anchor_idx_rnas[0],:], dim = 0))
+        for batch in range(nbatches_atac):
+            loss_anchor += reg_anchor * torch.norm(torch.mean(b_z_atacs[batch][anchor_idx_atacs[batch],:], dim = 0) - torch.mean(b_z_rnas[0][anchor_idx_rnas[0],:], dim = 0))
+        loss_total += loss_anchor
+    else:
+        loss_anchor = torch.tensor(0.0).to(device)
+    loss_total.backward()
+
+    opts["gene_act"].step()
+    opts["encoder"].step()
+
+    losses = {"loss_mmd": loss_mmd, "loss_d_atac": loss_d_atac, "loss_genact": loss_genact, "loss_d_rna": loss_d_rna, "loss_anchor": loss_anchor} 
+    return losses
 
 
 def match_latent(model, opts, dist_atac, dist_rna, data_loader_rna, data_loader_atac, 
@@ -139,6 +199,104 @@ def match_latent(model, opts, dist_atac, dist_rna, data_loader_rna, data_loader_
     return loss_record
 
 
+def match_latent_batches(model, opts, dist_atacs, dist_rnas, data_loaders_rna, data_loaders_atac, 
+                        n_epochs, reg_mtx, reg_d = 1, reg_g = 1, reg_mmd = 1, use_anchor = False, 
+                        norm = "l1", mode = "kl", device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')):
+
+    reg_mtx = reg_mtx.type(torch.bool)
+    batch_size = data_loaders_rna[0].batch_size
+
+    loss_record = []
+
+    for epoch in range(n_epochs):
+        ave_loss_mmd = 0
+        ave_loss_d_atac = 0
+        ave_loss_genact = 0
+        ave_loss_d_rna = 0
+        ave_loss_anchor = 0
+
+        data_loaders = data_loaders_atac + data_loaders_rna
+        for data in zip(*data_loaders):
+            # data batch
+            data_atacs = data[:len(data_loaders_atac)]
+            data_rnas = data[len(data_loaders_atac):]
+            
+            b_x_rnas = []
+            b_dist_rnas = []
+            b_anchor_rnas = []
+            b_x_atacs = []
+            b_dist_atacs = []
+            b_anchor_atacs = []
+            
+            for batch in range(len(data_rnas)):
+                b_x_rnas.append(data_rnas[batch]['count'].to(device))
+                b_idx_rna = data_rnas[batch]["index"].to(device)
+                b_dist_rnas.append(dist_rnas[batch][b_idx_rna,:][:,b_idx_rna])      
+                b_anchor_rnas.append(data_rnas[batch]["is_anchor"].to(device)) 
+            
+            for batch in range(len(data_atacs)):
+                b_x_atacs.append(data_atacs[batch]["count"].to(device))
+                b_idx_atac = data_atacs[batch]["index"].to(device)
+                b_dist_atacs.append(dist_atacs[batch][b_idx_atac,:][:,b_idx_atac])
+                b_anchor_atacs.append(data_atacs[batch]["is_anchor"].to(device))
+
+            # the last batch is not full size
+            if (min([b_x_rna.shape[0] for b_x_rna in b_x_rnas] + [b_x_atac.shape[0] for b_x_atac in b_x_atacs]) < batch_size): 
+                continue
+
+            # for batch, b_anchor_atac in enumerate(b_anchor_atacs):
+            #     print(b_anchor_atac.shape[0])
+            #     print(b_x_atacs[batch].shape)
+            #     print(b_x_atacs[batch][b_anchor_atac.shape[0],:].shape)
+            # for batch, b_anchor_rna in enumerate(b_anchor_rnas):
+            #     print(b_anchor_rna.shape[0])
+            #     print(b_x_rnas[batch][b_anchor_rna.shape[0],:].shape)
+
+            # do not allow batch size 1
+            if use_anchor and (min([b_x_atacs[batch][b_anchor_atac,:].shape[0] for batch, b_anchor_atac in enumerate(b_anchor_atacs)] + [b_x_rnas[batch][b_anchor_rna,:].shape[0] for batch, b_anchor_rna in enumerate(b_anchor_rnas)]) > 1):
+                losses = _train_mmd_ext(model, opts, b_x_rnas, b_x_atacs, reg_mtx, b_dist_atacs, b_dist_rnas, b_anchor_rnas, b_anchor_atacs, reg_anchor = 1, 
+                reg_d = reg_d, reg_g = reg_g, reg_mmd = reg_mmd, norm = norm, mode = mode, device = device)
+            else:
+                losses = _train_mmd_ext(model, opts, b_x_rnas, b_x_atacs, reg_mtx, b_dist_atacs, b_dist_rnas, None, None,
+                reg_anchor = 0, reg_d = reg_d, reg_g = reg_g, reg_mmd = reg_mmd, norm = norm, mode = mode, device = device)
+            
+            ave_loss_mmd += losses["loss_mmd"]
+            ave_loss_d_atac += losses["loss_d_atac"]
+            ave_loss_genact += losses["loss_genact"]  
+            ave_loss_d_rna += losses["loss_d_rna"]
+            ave_loss_anchor += losses["loss_anchor"]          
+
+        ave_loss_mmd /= min([len(data_loader_atac) for data_loader_atac in data_loaders_atac] + [len(data_loader_rna) for data_loader_rna in data_loaders_rna])
+        ave_loss_d_atac /= min([len(data_loader_atac) for data_loader_atac in data_loaders_atac] + [len(data_loader_rna) for data_loader_rna in data_loaders_rna])
+        ave_loss_genact /= min([len(data_loader_atac) for data_loader_atac in data_loaders_atac] + [len(data_loader_rna) for data_loader_rna in data_loaders_rna])
+        ave_loss_d_rna /= min([len(data_loader_atac) for data_loader_atac in data_loaders_atac] + [len(data_loader_rna) for data_loader_rna in data_loaders_rna])
+        ave_loss_anchor /= min([len(data_loader_atac) for data_loader_atac in data_loaders_atac] + [len(data_loader_rna) for data_loader_rna in data_loaders_rna])
+
+        loss_record.append({
+            "loss_mmd": ave_loss_mmd.item(),
+            "loss_d_atac": ave_loss_d_atac.item(),
+            "loss_d_rna": ave_loss_d_rna.item(),
+            "gene activity loss": ave_loss_genact.item()
+        })
+        
+        if epoch % 100 == 0:
+            info = [
+                'mmd loss: {:.3f}'.format(ave_loss_mmd.item()),
+                'ATAC dist loss: {:.3f}'.format(ave_loss_d_atac.item()),
+                'RNA dist loss: {:.3f}'.format(ave_loss_d_rna.item()),
+                'gene activity loss: {:.3f}'.format(ave_loss_genact.item()),
+                'anchor matching loss: {:.3f}'.format(ave_loss_anchor.item())
+            ]
+
+
+            print("epoch: ", epoch)
+            for i in info:
+                print("\t", i)
+
+    return loss_record
+
+
+
 def infer_gact(model, mask, thresh = None):
     W = None
 
@@ -202,7 +360,7 @@ def _train_mmd_fix(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist_rna,
     loss_d_rna = reg_d * loss.dist_loss(z = b_z_rna, diff_sim = dist_rna, mode = mode)
 
     loss_genact = reg_g * loss.pinfo_loss(model["gene_act"], ~reg_mtx, norm = norm)
-    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy(b_z_atac, b_z_rna)
+    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy([b_z_atac, b_z_rna])
 
     loss_total = loss_d_atac + loss_genact + loss_d_rna + loss_mmd
     if anchor_idx_rna is not None and anchor_idx_atac is not None:
@@ -217,7 +375,6 @@ def _train_mmd_fix(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist_rna,
 
     losses = {"loss_mmd": loss_mmd, "loss_d_atac": loss_d_atac, "loss_genact": loss_genact, "loss_d_rna": loss_d_rna, "loss_anchor": loss_anchor} 
     return losses
-
 
 
 def match_latent_fix(model, opts, dist_atac, dist_rna, data_loader_rna, data_loader_atac, 
@@ -398,8 +555,8 @@ def _train_mmd_exampler(model, opts, b_x_rna, b_x_atac, reg_mtx, dist_atac, dist
     
     # other losses
     loss_genact = reg_g * loss.pinfo_loss(model["gene_act"], ~reg_mtx, norm = norm)
-    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy(b_z_atac_exampler, b_z_rna_exampler, device = device)
-    # loss_mmd += reg_mmd * loss.maximum_mean_discrepancy(b_z_atac, b_z_rna)
+    loss_mmd = reg_mmd * loss.maximum_mean_discrepancy([b_z_atac_exampler, b_z_rna_exampler], device = device)
+    # loss_mmd += reg_mmd * loss.maximum_mean_discrepancy([b_z_atac, b_z_rna])
 
     loss_total = loss_d_atac + loss_genact + loss_d_rna + loss_mmd
     if anchor_idx_rna is not None and anchor_idx_atac is not None:
