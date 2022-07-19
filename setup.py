@@ -32,7 +32,8 @@ REQUIRED = [
     'seaborn>=0.10.0',
     'matplotlib>=3.2.1',
     'leidenalg>=0.8.2',
-    'networkx>=2.5'
+    'networkx>=2.5',
+    'graphtools==1.5.2'
 ]
 
 # What packages are optional?
