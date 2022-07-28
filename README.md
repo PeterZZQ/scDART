@@ -10,7 +10,7 @@ Developed by Ziqi Zhang, Chengkai Yang
 
 **scDART** (**s**ingle **c**ell **D**eep learning model for **A**TAC-Seq and **R**NA-Seq **T**rajectory integration) is a scalable deep learning framework that embed the two data modalities of single cells, scRNA-seq and scATAC-seq data, into a shared low-dimensional latent space while preserving cell trajectory structures. Furthermore, **scDART** learns a nonlinear function represented by a neural network encoding the cross-modality relationship simultaneously when learning the latent space representations of the integrated dataset. 
 
-The preprint is available on bioarxiv: [https://www.biorxiv.org/content/10.1101/2021.04.16.440230v1.full.pdf](https://www.biorxiv.org/content/10.1101/2021.04.16.440230v1.full.pdf)
+The preprint is available on Genome Biology: [https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02706-x](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02706-x)
 
 
 ## Dependencies
