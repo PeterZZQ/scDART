@@ -139,7 +139,7 @@ class scDART(object):
         coarse_reg = torch.FloatTensor(reg).to(self.device)
 
         # batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/4) if self.batch_size is None else self.batch_size
-        batch_size = int(max([len(self.rna_dataset),len(self.atac_dataset)])/4)
+        batch_size = int(min([len(self.rna_dataset),len(self.atac_dataset)])/4)
         
         train_rna_loader = DataLoader(self.rna_dataset, batch_size = batch_size, shuffle = True)
         train_atac_loader = DataLoader(self.atac_dataset, batch_size = batch_size, shuffle = True)
